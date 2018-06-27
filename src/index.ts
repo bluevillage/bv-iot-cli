@@ -19,6 +19,7 @@ import GraphRbacManagementClient from 'azure-graph';
 import AuthorizationManagementClient = require('azure-arm-authorization');
 import ComputeManagementClient = require('azure-arm-compute');
 import { Command } from 'commander';
+const shell = require('node-powershell');
 
 import { Answers, Question } from 'inquirer';
 import { DeploymentManager, IDeploymentManager } from './deploymentmanager';
@@ -154,6 +155,11 @@ function main() {
      * Submit deployment
      */
     cachedAuthResponse = getCachedAuthResponse();
+
+    // Logic App Auth Data
+    let ResourceLocationChoice = '';
+    let subId = '';
+
     if (!cachedAuthResponse) {
         console.log('Please run %s', `${chalk.yellow('pcs login')}`);
     } else {
@@ -165,6 +171,7 @@ function main() {
             cachedAuthResponse.subscriptions.map((subscription: LinkedSubscription) => {
                 if (subscription.state === 'Enabled') {
                     subs.push({name: subscription.name, value: subscription.id});
+                    subId = getSubId(subscription.id);
                 }
             });
 
@@ -204,6 +211,7 @@ function main() {
                 })
                 .then((ans: Answers) => {
                     answers.location = ans.location;
+                    ResourceLocationChoice = getResourceLocationChoice(answers.location);
                     answers.azureWebsiteName = ans.azureWebsiteName;
                     answers.adminUsername = ans.adminUsername;
                     if (ans.pwdFirstAttempt !== ans.pwdSecondAttempt) {
@@ -266,6 +274,22 @@ function main() {
                         console.log(`${chalk.red(message)}`);
                     }
                 })
+                // StartLogicAppAuth *LogicAppConnectionAuth on github*
+                .then(() => {
+                    const ps = new shell({executionPolicy: 'Bypass', noProfile: true});
+                    const params = [
+                        {ResourceGroupName: answers.solutionName},
+                        {ResourceLocation: ResourceLocationChoice},
+                        {api: 'office365'},
+                        {ConnectionName: 'office365'},
+                        {subscriptionId: subId},
+                        {createConnection: '$False'}
+                    ];
+                    ps.addCommand('./src/LogicAppConnectionAuth.ps1', params);
+                    ps.invoke();
+                    ps.dispose();
+                })
+                // EndLogicAppAuth                
                 .catch((error: any) => {
                     if (error.request) {
                         console.log(JSON.stringify(error, null, 2));
@@ -675,4 +699,12 @@ function getDomain(): string {
 function getWebsiteUrl(hostName: string): string {
     const domain = getDomain();
     return `https://${hostName}${domain}`;
+}
+
+function getResourceLocationChoice(input: string): string {
+    return input;
+}
+
+function getSubId(input: string): string {
+    return input;
 }
